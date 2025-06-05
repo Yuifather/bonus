@@ -30,7 +30,7 @@ if 'currencies' not in st.session_state:
     }
 if 'accounts' not in st.session_state:
     st.session_state.accounts = {
-        code: {'balance': 0, 'bonus': 0, 'credit': 0, 'restricted': 0}
+        code: {'net_capital': 0, 'bonus': 0, 'credit': 0, 'restricted': 0}
         for code in default_rates
     }
 if '누적보너스_USD' not in st.session_state:
@@ -104,8 +104,7 @@ if main_menu == "입금/출금":
             apply_bonus_usd = min(raw_bonus_usd, remain_bonus_usd)
             apply_bonus = floor_to_digit(apply_bonus_usd / rate, digit)
             
-            # balance = 기존 balance + 입금액 + 지급된 보너스
-            acc['balance'] = floor_to_digit(acc['balance'] + amount + apply_bonus, digit)
+            acc['net_capital'] = floor_to_digit(acc['net_capital'] + amount, digit)
             if apply_bonus > 0:
                 acc['bonus'] = floor_to_digit(acc['bonus'] + apply_bonus, digit)
                 st.session_state['누적보너스_USD'] = floor_to_digit(
@@ -116,31 +115,23 @@ if main_menu == "입금/출금":
                 st.success(f"{currency} {amount} 입금 (보너스 한도 도달로 보너스 지급 없음)")
 
         elif action == "출금":
-            # 출금가능: 해당 통화 순수자본 한도 내
-            net_capital = floor_to_digit(acc['balance'] - acc['bonus'] - acc['credit'] - acc['restricted'], digit)
+            net_capital = floor_to_digit(acc['net_capital'], digit)
             출금가능 = max(0, net_capital)
             출금액 = min(amount, 출금가능)
             출금액 = floor_to_digit(출금액, digit)
             if 출금액 <= 0:
                 st.error("출금 가능 순수자본이 부족합니다.")
-            elif acc['balance'] < 출금액:
-                st.error("잔액 부족!")
             else:
-                # 출금 비율 = 출금액 / 순수자본
                 ratio = 출금액 / net_capital if net_capital > 0 else 1
-
-                # 해당 통화에 대해서만 보너스 비례 차감
+                acc['net_capital'] = floor_to_digit(acc['net_capital'] - 출금액, digit)
                 acc['bonus'] = floor_to_digit(acc['bonus'] * (1 - ratio), digit)
-
-                # 순수자본에서 출금액 차감 → balance에서 출금액 차감
-                acc['balance'] = floor_to_digit(acc['balance'] - 출금액, digit)
 
                 # 출금 후 전체 순수자본(USD) < 10 이면 모든 보너스 소멸
                 total_net_after = 0
                 for code in currencies:
                     acc0 = st.session_state.accounts[code]
                     d0 = currencies[code]['digit']
-                    net0 = floor_to_digit(acc0['balance'] - acc0['bonus'] - acc0['credit'] - acc0['restricted'], d0)
+                    net0 = floor_to_digit(acc0['net_capital'], d0)
                     total_net_after += net0 * currencies[code]['rate']
                 if total_net_after < 10:
                     for code in currencies:
@@ -148,7 +139,7 @@ if main_menu == "입금/출금":
 
                 st.success(f"{currency} {출금액} 출금 완료 (보너스 {ratio:.2%} 차감)")
 
-# 설정 > 환율 및 소수점 수정
+# 설정 부분(동일, accounts 구조만 맞춰서 초기화)
 if main_menu == "설정" and setting_menu == "환율 및 소수점 수정":
     st.subheader("환율 및 소수점 수정")
     st.write("'적용' 클릭시 전체 초기화 됩니다.")
@@ -174,13 +165,12 @@ if main_menu == "설정" and setting_menu == "환율 및 소수점 수정":
             code: {'rate': new_rates[code], 'digit': new_digits[code]} for code in currencies
         }
         st.session_state.accounts = {
-            code: {'balance': 0, 'bonus': 0, 'credit': 0, 'restricted': 0}
+            code: {'net_capital': 0, 'bonus': 0, 'credit': 0, 'restricted': 0}
             for code in currencies
         }
         st.session_state['누적보너스_USD'] = 0
         st.success("환율/소수점 변경 및 전체 초기화 완료!")
 
-# 설정 > 보너스 비율 수정
 if main_menu == "설정" and setting_menu == "보너스 비율 수정":
     st.subheader("보너스 비율 수정")
     st.write("아래 비율을 변경 후 '적용'을 누르면 전체 초기화 됩니다.")
@@ -191,31 +181,29 @@ if main_menu == "설정" and setting_menu == "보너스 비율 수정":
         st.session_state['bonus_ratio_first'] = int(bonus_ratio_first)
         st.session_state['bonus_ratio_next'] = int(bonus_ratio_next)
         st.session_state.accounts = {
-            code: {'balance': 0, 'bonus': 0, 'credit': 0, 'restricted': 0}
+            code: {'net_capital': 0, 'bonus': 0, 'credit': 0, 'restricted': 0}
             for code in currencies
         }
         st.session_state['누적보너스_USD'] = 0
         st.success("보너스 비율 변경 및 전체 초기화 완료!")
 
-# 설정 > 누적보너스 한도 설정
 if main_menu == "설정" and setting_menu == "누적보너스 한도 설정":
     st.subheader("누적보너스 한도 설정")
     new_limit = st.number_input("누적보너스 한도(USD)", min_value=1, value=int(st.session_state['bonus_limit_usd']), step=1000)
     if st.button("적용(전체초기화)", key="apply_bonus_limit"):
         st.session_state['bonus_limit_usd'] = int(new_limit)
         st.session_state.accounts = {
-            code: {'balance': 0, 'bonus': 0, 'credit': 0, 'restricted': 0}
+            code: {'net_capital': 0, 'bonus': 0, 'credit': 0, 'restricted': 0}
             for code in currencies
         }
         st.session_state['누적보너스_USD'] = 0
         st.success("누적보너스 한도 변경 및 전체 초기화 완료!")
 
-# 설정 > 초기화
 if main_menu == "설정" and setting_menu == "초기화":
     st.subheader("전체 초기화")
     if st.button("전체 계좌/보너스 리셋", key="full_reset"):
         st.session_state.accounts = {
-            code: {'balance': 0, 'bonus': 0, 'credit': 0, 'restricted': 0}
+            code: {'net_capital': 0, 'bonus': 0, 'credit': 0, 'restricted': 0}
             for code in currencies
         }
         st.session_state['누적보너스_USD'] = 0
@@ -234,15 +222,15 @@ rows = []
 for code in currencies.keys():
     data = accounts[code]
     d = currencies[code]['digit']
-    balance = floor_to_digit(data['balance'], d)
+    net_capital = floor_to_digit(data['net_capital'], d)
     bonus = floor_to_digit(data['bonus'], d)
     credit = floor_to_digit(data['credit'], d)
     restricted = floor_to_digit(data['restricted'], d)
-    net = floor_to_digit(balance - bonus - credit - restricted, d)
+    balance = floor_to_digit(net_capital + bonus + credit + restricted, d)
     rows.append({
         "통화": code,
         "balance": balance,
-        "순수자본": net,
+        "순수자본": net_capital,
         "bonus": bonus,
         "credit": credit,
         "restricted": restricted
@@ -261,7 +249,10 @@ main_digit = currencies[합산기준통화]['digit']
 def total_by_key(key):
     total = 0
     for code in currencies:
-        val = floor_to_digit(accounts[code][key], currencies[code]['digit'])
+        if key == 'balance':
+            val = floor_to_digit(accounts[code]['net_capital'] + accounts[code]['bonus'] + accounts[code]['credit'] + accounts[code]['restricted'], currencies[code]['digit'])
+        else:
+            val = floor_to_digit(accounts[code][key], currencies[code]['digit'])
         환산 = 환산금액(val, code, 합산기준통화, currencies)
         환산_floor = floor_to_digit(환산, main_digit)
         total += 환산_floor
