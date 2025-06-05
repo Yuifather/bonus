@@ -115,18 +115,30 @@ if main_menu == "입금/출금":
                 st.success(f"{currency} {amount} 입금 (보너스 한도 도달로 보너스 지급 없음)")
 
         elif action == "출금":
-            net_capital = floor_to_digit(acc['net_capital'], digit)
-            출금가능 = max(0, net_capital)
+            # 1. 전체 순수자본(USD 환산) 계산
+            total_net_usd = 0
+            for code in currencies:
+                acc0 = st.session_state.accounts[code]
+                net0 = floor_to_digit(acc0['net_capital'], currencies[code]['digit'])
+                total_net_usd += net0 * currencies[code]['rate']
+            # 2. 출금액(USD 환산)
+            출금가능 = max(0, acc['net_capital'])
             출금액 = min(amount, 출금가능)
             출금액 = floor_to_digit(출금액, digit)
+            출금_usd = 출금액 * currencies[currency]['rate']
             if 출금액 <= 0:
                 st.error("출금 가능 순수자본이 부족합니다.")
             else:
-                ratio = 출금액 / net_capital if net_capital > 0 else 1
+                # 3. 출금비율(USD기준)
+                ratio = 출금_usd / total_net_usd if total_net_usd > 0 else 1
+                # 4. 모든 통화의 보너스 비례 차감
+                for code in currencies:
+                    acc0 = st.session_state.accounts[code]
+                    digit0 = currencies[code]['digit']
+                    acc0['bonus'] = floor_to_digit(acc0['bonus'] * (1 - ratio), digit0)
+                # 5. 출금통화 net_capital 차감
                 acc['net_capital'] = floor_to_digit(acc['net_capital'] - 출금액, digit)
-                acc['bonus'] = floor_to_digit(acc['bonus'] * (1 - ratio), digit)
-
-                # 출금 후 전체 순수자본(USD) < 10 이면 모든 보너스 소멸
+                # 6. 전체 순수자본(USD) < 10이면 모든 보너스 소멸
                 total_net_after = 0
                 for code in currencies:
                     acc0 = st.session_state.accounts[code]
@@ -139,7 +151,7 @@ if main_menu == "입금/출금":
 
                 st.success(f"{currency} {출금액} 출금 완료 (보너스 {ratio:.2%} 차감)")
 
-# 설정 부분(동일, accounts 구조만 맞춰서 초기화)
+# 설정 부분 (동일, accounts 구조만 맞춰서 초기화)
 if main_menu == "설정" and setting_menu == "환율 및 소수점 수정":
     st.subheader("환율 및 소수점 수정")
     st.write("'적용' 클릭시 전체 초기화 됩니다.")
