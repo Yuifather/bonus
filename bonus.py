@@ -126,19 +126,13 @@ if main_menu == "입금/출금":
             elif acc['balance'] < 출금액:
                 st.error("잔액 부족!")
             else:
-                # 출금 비율 = 출금액 / 해당 통화 순수자본
-                if net_capital > 0:
-                    ratio = min(출금액 / net_capital, 1)
-                else:
-                    ratio = 1
+                # 출금 비율 = 출금액 / 순수자본
+                ratio = 출금액 / net_capital if net_capital > 0 else 1
 
-                # 모든 통화의 보너스 비례 차감
-                for code in currencies:
-                    acc0 = st.session_state.accounts[code]
-                    digit0 = currencies[code]['digit']
-                    acc0['bonus'] = floor_to_digit(acc0['bonus'] * (1 - ratio), digit0)
+                # 해당 통화에 대해서만 보너스 비례 차감
+                acc['bonus'] = floor_to_digit(acc['bonus'] * (1 - ratio), digit)
 
-                # 출금(순수자본만 출금, balance에서 출금액만큼 빼줌)
+                # 순수자본에서 출금액 차감 → balance에서 출금액 차감
                 acc['balance'] = floor_to_digit(acc['balance'] - 출금액, digit)
 
                 # 출금 후 전체 순수자본(USD) < 10 이면 모든 보너스 소멸
@@ -152,7 +146,7 @@ if main_menu == "입금/출금":
                     for code in currencies:
                         st.session_state.accounts[code]['bonus'] = 0
 
-                st.success(f"{currency} {출금액} 출금 완료 (모든 통화 보너스 비례 차감)")
+                st.success(f"{currency} {출금액} 출금 완료 (보너스 {ratio:.2%} 차감)")
 
 # 설정 > 환율 및 소수점 수정
 if main_menu == "설정" and setting_menu == "환율 및 소수점 수정":
@@ -292,7 +286,7 @@ st.write(f"**누적보너스 (USD 기준, 지급총액):** {누적보너스:.2f}
 
 st.info(f"""
 - 모든 금액(잔고, 보너스, 출금, 합산 등)은 해당 통화 digit(소수점 자리) 기준으로 rounddown(floor) 처리됩니다.
-- 'balance = 순수자본 + 보너스 + 크레딧 + 출금제한'은 모든 통화에서 반드시 성립합니다.
+- 'balance = 순수자본 + 보너스 + credit + restricted'은 모든 통화에서 반드시 성립합니다.
 - 총자산 = 순수자본 + 토탈보너스 + 토탈크레딧 + 토탈출금제한 입니다.
 - '토탈보너스'는 각 통화별 현재 보너스 금액을 합산환산한 값입니다.
 - '누적보너스'는 입금시점부터 지급된 모든 보너스의 USD 합계(한도체크용)입니다.
