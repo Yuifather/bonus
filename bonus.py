@@ -2,20 +2,49 @@ import streamlit as st
 import pandas as pd
 import math
 
-# 통화별 환율/소수점 정보
-currencies = {
-    'USD': {'rate': 1, 'digit': 2},
-    'EUR': {'rate': 1.1, 'digit': 2},
-    'GBP': {'rate': 1.25, 'digit': 2},
-    'JPY': {'rate': 0.007, 'digit': 0},
-    'BTC': {'rate': 65000, 'digit': 8},
-    'ETH': {'rate': 3500, 'digit': 6},
-    'XRP': {'rate': 0.5, 'digit': 1},
-    'USDT': {'rate': 1, 'digit': 2},
-    'USDC': {'rate': 1, 'digit': 2},
+# 환율/소수점 세팅
+default_rates = {
+    'USD': 1, 'EUR': 1.1, 'GBP': 1.25, 'JPY': 0.007,
+    'BTC': 65000, 'ETH': 3500, 'XRP': 0.5, 'USDT': 1, 'USDC': 1,
+}
+default_digits = {
+    'USD': 2, 'EUR': 2, 'GBP': 2, 'JPY': 0,
+    'BTC': 8, 'ETH': 6, 'XRP': 1, 'USDT': 2, 'USDC': 2,
 }
 
 st.title('멀티통화 입출금/보너스 시뮬레이터')
+
+# 환율/자릿수 UI & 동기화
+if 'currencies' not in st.session_state:
+    st.session_state['currencies'] = {
+        code: {'rate': default_rates[code], 'digit': default_digits[code]}
+        for code in default_rates
+    }
+
+st.sidebar.markdown("### [환율 및 소수점 수정]")
+edited = False
+new_rates = {}
+new_digits = {}
+
+for code in default_rates:
+    c = st.sidebar.container()
+    rate = c.number_input(f"{code} 환율(대표통화={list(default_rates.keys())[0]}=1)", 
+                          min_value=0.000001, step=0.000001, value=st.session_state['currencies'][code]['rate'], key=f"rate_{code}", format="%.6f")
+    digit = c.number_input(f"{code} 소수점(digit)", min_value=0, max_value=8, step=1, value=st.session_state['currencies'][code]['digit'], key=f"digit_{code}")
+    new_rates[code] = rate
+    new_digits[code] = digit
+
+if st.sidebar.button("환율/소수점 적용(모두 초기화됨)"):
+    st.session_state['currencies'] = {code: {'rate': new_rates[code], 'digit': new_digits[code]} for code in default_rates}
+    # 초기화 동작
+    st.session_state.accounts = {
+        code: {'balance': 0, 'bonus': 0, 'credit': 0, 'restricted': 0}
+        for code in default_rates
+    }
+    st.session_state['누적보너스_USD'] = 0
+    st.success("환율/소수점 변경됨: 전체 초기화 완료!")
+
+currencies = st.session_state['currencies']
 
 # 초기화 버튼
 if st.sidebar.button("초기화(RESET)"):
@@ -58,43 +87,28 @@ if st.sidebar.button("실행"):
     amount = float(amount)
 
     if action == "입금":
-        # 입금 반영
         acc['balance'] += amount
-
-        # 보너스 지급(첫 입금: 50% 최대 $500, 초과분/추가입금: 20%, 누적한도 $20,000)
         if 누적보너스 == 0:
-            # 첫 입금: 50% (최대 $500), 초과분 20%
             fifty = min(amount, 500 / rate) * 0.5
             excess = max(0, amount - 500 / rate) * 0.2
             raw_bonus = fifty + excess
         else:
-            # 추가입금: 전액 20%
             raw_bonus = amount * 0.2
-
-        # 누적보너스 한도 적용
         raw_bonus_usd = raw_bonus * rate
         remain_bonus_usd = max(0, 20000 - 누적보너스)
         apply_bonus_usd = min(raw_bonus_usd, remain_bonus_usd)
         apply_bonus = floor_to_digit(apply_bonus_usd / rate, digit)
-
-        # 지급 및 누적 기록
         acc['bonus'] += apply_bonus
         st.session_state['누적보너스_USD'] += apply_bonus * rate
-
         st.success(f"{currency} {amount} 입금 및 보너스 {apply_bonus} 지급")
     elif action == "출금":
         if acc['balance'] < amount:
             st.error("잔액 부족!")
         else:
-            # 출금가능 자기자본 계산
             net_capital = acc['balance'] - acc['bonus'] - acc['credit'] - acc['restricted']
             출금가능 = max(0, net_capital)
-
-            # 출금액이 출금가능 초과면 최대한도만 출금
             출금액 = min(amount, 출금가능)
             acc['balance'] -= 출금액
-
-            # 보너스 차감
             after_capital = acc['balance'] - acc['bonus'] - acc['credit'] - acc['restricted']
             after_capital_usd = after_capital * currencies[currency]['rate']
             if after_capital_usd < 10:
@@ -103,7 +117,6 @@ if st.sidebar.button("실행"):
                 acc['bonus'] = 0
             else:
                 acc['bonus'] = floor_to_digit(acc['bonus'] * after_capital / 출금가능, digit)
-
             st.success(f"{currency} {출금액} 출금 완료 (보너스 자동 차감)")
 
 # 통화별 현황 표
