@@ -17,7 +17,7 @@ st.title('멀티통화 입출금/보너스 시뮬레이터')
 # 환율/자릿수 UI & 동기화
 if 'currencies' not in st.session_state:
     st.session_state['currencies'] = {
-        code: {'rate': default_rates[code], 'digit': default_digits[code]}
+        code: {'rate': float(default_rates[code]), 'digit': int(default_digits[code])}
         for code in default_rates
     }
 
@@ -28,14 +28,24 @@ new_digits = {}
 
 for code in default_rates:
     c = st.sidebar.container()
-    rate = c.number_input(f"{code} 환율(대표통화={list(default_rates.keys())[0]}=1)", 
-                          min_value=0.000001, step=0.000001, value=st.session_state['currencies'][code]['rate'], key=f"rate_{code}", format="%.6f")
-    digit = c.number_input(f"{code} 소수점(digit)", min_value=0, max_value=8, step=1, value=st.session_state['currencies'][code]['digit'], key=f"digit_{code}")
-    new_rates[code] = rate
-    new_digits[code] = digit
+    rate = c.number_input(
+        f"{code} 환율(대표통화={list(default_rates.keys())[0]}=1)",
+        min_value=0.000001, step=0.000001,
+        value=float(st.session_state['currencies'][code]['rate']),
+        key=f"rate_{code}", format="%.6f"
+    )
+    digit = c.number_input(
+        f"{code} 소수점(digit)", min_value=0, max_value=8, step=1,
+        value=int(st.session_state['currencies'][code]['digit']),
+        key=f"digit_{code}"
+    )
+    new_rates[code] = float(rate)
+    new_digits[code] = int(digit)
 
 if st.sidebar.button("환율/소수점 적용(모두 초기화됨)"):
-    st.session_state['currencies'] = {code: {'rate': new_rates[code], 'digit': new_digits[code]} for code in default_rates}
+    st.session_state['currencies'] = {
+        code: {'rate': new_rates[code], 'digit': new_digits[code]} for code in default_rates
+    }
     # 초기화 동작
     st.session_state.accounts = {
         code: {'balance': 0, 'bonus': 0, 'credit': 0, 'restricted': 0}
