@@ -93,7 +93,6 @@ if main_menu == "입금/출금":
 
         if action == "입금":
             amount = floor_to_digit(amount, digit)
-            
             if 누적보너스 == 0:
                 fifty = min(amount, 500 / rate) * (bonus_ratio_first / 100)
                 excess = max(0, amount - 500 / rate) * (bonus_ratio_next / 100)
@@ -104,8 +103,8 @@ if main_menu == "입금/출금":
             remain_bonus_usd = max(0, bonus_limit_usd - 누적보너스)
             apply_bonus_usd = min(raw_bonus_usd, remain_bonus_usd)
             apply_bonus = floor_to_digit(apply_bonus_usd / rate, digit)
-
             
+            # balance = 기존 balance + 입금액 + 지급된 보너스
             acc['balance'] = floor_to_digit(acc['balance'] + amount + apply_bonus, digit)
             if apply_bonus > 0:
                 acc['bonus'] = floor_to_digit(acc['bonus'] + apply_bonus, digit)
@@ -117,39 +116,32 @@ if main_menu == "입금/출금":
                 st.success(f"{currency} {amount} 입금 (보너스 한도 도달로 보너스 지급 없음)")
 
         elif action == "출금":
-            # 출금 전 전체 순수자본 USD
-            total_net_before = 0
-            for code in currencies:
-                acc0 = st.session_state.accounts[code]
-                d0 = currencies[code]['digit']
-                net0 = floor_to_digit(acc0['balance'] - acc0['bonus'] - acc0['credit'] - acc0['restricted'], d0)
-                total_net_before += net0 * currencies[code]['rate']
-
-            withdraw_usd = floor_to_digit(amount * currencies[currency]['rate'], 2)
-
-            if total_net_before > 0:
-                ratio = min(withdraw_usd / total_net_before, 1)
-            else:
-                ratio = 1
-
-            # 각 통화별 보너스 비례 소진
-            for code in currencies:
-                acc0 = st.session_state.accounts[code]
-                digit0 = currencies[code]['digit']
-                acc0['bonus'] = floor_to_digit(acc0['bonus'] * (1 - ratio), digit0)
-
-            # 출금 처리
-            if acc['balance'] < amount:
+            # 출금가능: 해당 통화 순수자본 한도 내
+            net_capital = floor_to_digit(acc['balance'] - acc['bonus'] - acc['credit'] - acc['restricted'], digit)
+            출금가능 = max(0, net_capital)
+            출금액 = min(amount, 출금가능)
+            출금액 = floor_to_digit(출금액, digit)
+            if 출금액 <= 0:
+                st.error("출금 가능 순수자본이 부족합니다.")
+            elif acc['balance'] < 출금액:
                 st.error("잔액 부족!")
             else:
-                d = currencies[currency]['digit']
-                net_capital = floor_to_digit(acc['balance'] - acc['bonus'] - acc['credit'] - acc['restricted'], d)
-                출금가능 = max(0, net_capital)
-                출금액 = min(amount, 출금가능)
-                출금액 = floor_to_digit(출금액, d)
-                acc['balance'] = floor_to_digit(acc['balance'] - 출금액, d)
+                # 출금 비율 = 출금액 / 해당 통화 순수자본
+                if net_capital > 0:
+                    ratio = min(출금액 / net_capital, 1)
+                else:
+                    ratio = 1
 
-                # 출금 후 전체 순수자본이 10(USD) 미만이면 모든 보너스 0
+                # 모든 통화의 보너스 비례 차감
+                for code in currencies:
+                    acc0 = st.session_state.accounts[code]
+                    digit0 = currencies[code]['digit']
+                    acc0['bonus'] = floor_to_digit(acc0['bonus'] * (1 - ratio), digit0)
+
+                # 출금(순수자본만 출금, balance에서 출금액만큼 빼줌)
+                acc['balance'] = floor_to_digit(acc['balance'] - 출금액, digit)
+
+                # 출금 후 전체 순수자본(USD) < 10 이면 모든 보너스 소멸
                 total_net_after = 0
                 for code in currencies:
                     acc0 = st.session_state.accounts[code]
@@ -244,7 +236,6 @@ accounts = st.session_state.accounts
 df = pd.DataFrame(accounts).T
 st.write("### 통화별 계좌 현황")
 
-# 통화별 상세 breakdown
 rows = []
 for code in currencies.keys():
     data = accounts[code]
