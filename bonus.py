@@ -100,7 +100,6 @@ if main_menu == "입금/출금":
             amount = floor_to_digit(amount, digit)
             # 최초 입금 시
             if 누적보너스 == 0:
-                # "해당통화 환산액 first_limit까지는 first% 지급, 초과분은 next%"
                 if bonus_ratio_first > 0:
                     first_limit = first_bonus_limit_usd / (bonus_ratio_first / 100) / rate
                 else:
@@ -110,11 +109,19 @@ if main_menu == "입금/출금":
                 raw_bonus = fifty_amt * (bonus_ratio_first / 100) + excess_amt * (bonus_ratio_next / 100)
             else:
                 raw_bonus = amount * (bonus_ratio_next / 100)
+
             raw_bonus_usd = raw_bonus * rate
             remain_bonus_usd = max(0, bonus_limit_usd - 누적보너스)
-            apply_bonus_usd = min(raw_bonus_usd, remain_bonus_usd)
-            apply_bonus = floor_to_digit(apply_bonus_usd / rate, digit)
 
+            # 1. 지급 가능 USD기준 보너스
+            if remain_bonus_usd >= raw_bonus_usd:
+                # 한도 넉넉할 때 전체 지급
+                apply_bonus_usd = raw_bonus_usd
+            else:
+                # 한도 모자라면 남은 한도만 지급
+                apply_bonus_usd = remain_bonus_usd
+
+            apply_bonus = floor_to_digit(apply_bonus_usd / rate, digit)
             acc['net_capital'] = floor_to_digit(acc['net_capital'] + amount, digit)
 
             # 지급될 보너스가 해당 통화 digit 기준으로 0이면 지급하지 않는다
@@ -128,7 +135,6 @@ if main_menu == "입금/출금":
                 st.success(f"{currency} {amount} 입금 (보너스 한도 도달로 보너스 지급 없음)")
 
         elif action == "출금":
-            # 전체 순수자본(USD 환산) 계산
             total_net_usd = 0
             for code in currencies:
                 acc0 = st.session_state.accounts[code]
@@ -141,16 +147,12 @@ if main_menu == "입금/출금":
             if 출금액 <= 0:
                 st.error("출금 가능 순수자본이 부족합니다.")
             else:
-                # 출금비율(USD기준)
                 ratio = 출금_usd / total_net_usd if total_net_usd > 0 else 1
-                # 모든 통화의 보너스 비례 차감
                 for code in currencies:
                     acc0 = st.session_state.accounts[code]
                     digit0 = currencies[code]['digit']
                     acc0['bonus'] = floor_to_digit(acc0['bonus'] * (1 - ratio), digit0)
-                # 출금통화 net_capital 차감
                 acc['net_capital'] = floor_to_digit(acc['net_capital'] - 출금액, digit)
-                # 출금 후 전체 순수자본(USD) < 10이면 모든 보너스 소멸
                 total_net_after = 0
                 for code in currencies:
                     acc0 = st.session_state.accounts[code]
@@ -306,13 +308,15 @@ st.write(f"** - 토탈출금제한:** {total_restricted:.{main_digit}f} {합산�
 st.write(f"**누적보너스 (USD 기준, 지급총액):** {누적보너스:.2f} / {bonus_limit_usd} USD")
 
 st.info(f"""
-- 모든 금액(잔고, 보너스, 출금, 합산 등)은 해당 통화 digit(소수점 자리) 기준으로 rounddown(floor) 처리됩니다.
-- 'balance = 순수자본 + 보너스 + credit + restricted'은 모든 통화에서 반드시 성립합니다.
-- 총자산 = 순수자본 + 토탈보너스 + 토탈크레딧 + 토탈출금제한 입니다.
+- 신규 고객의 최초 입금에 한해, 입금 금액의 {st.session_state['bonus_ratio_first']}%를 보너스로 지급. 단, 최초 입금에 대한 보너스는 최대 ${st.session_state['first_bonus_limit_usd']}를 한도로 함.
+- 최초 입금 시 한도를 넘는 입금 차액 또는 추가 입금에 대해서는 입금 금액의 {st.session_state['bonus_ratio_next']}%를 보너스로 지급
+- balance = 순수자본 + 보너스 + credit + restricted
+- 총자산 = 순수자본 + 토탈보너스 + 토탈크레딧 + 토탈출금제한
 - '토탈보너스'는 각 통화별 현재 보너스 금액을 합산환산한 값입니다.
 - '누적보너스'는 입금시점부터 지급된 모든 보너스의 USD 합계(한도체크용)입니다.
 - 누적보너스 한도는 [설정 > 누적보너스 한도 설정]에서 변경 가능합니다.
 - 환산 통화를 바꿔서 각 금액을 원하는 통화로 확인할 수 있습니다.
+- 출금 시 보너스를 제외한 계좌 잔액 대비 출금 금액에 해당하는 비율만큼, 보너스 잔액도 비례하여 차감
 - 출금 후 전체 순수자본(USD 환산)이 10 미만이면 모든 보너스가 전액 소멸됩니다.
-- **보너스 정책/비율** (최초입금 최대 {st.session_state['first_bonus_limit_usd']}USD, 첫입금 {st.session_state['bonus_ratio_first']}%, 추가입금 {st.session_state['bonus_ratio_next']}%)은 [설정 > 보너스 정책/비율 수정]에서 변경 가능합니다.
+- 보너스 정책/비율 (최초입금 최대 {st.session_state['first_bonus_limit_usd']}USD, 첫입금 {st.session_state['bonus_ratio_first']}%, 추가입금 {st.session_state['bonus_ratio_next']}%)은 [설정 > 보너스 정책/비율 수정]에서 변경 가능합니다.
 """)
