@@ -114,8 +114,10 @@ if main_menu == "입금/출금":
             remain_bonus_usd = max(0, bonus_limit_usd - 누적보너스)
             apply_bonus_usd = min(raw_bonus_usd, remain_bonus_usd)
             apply_bonus = floor_to_digit(apply_bonus_usd / rate, digit)
-            
+
             acc['net_capital'] = floor_to_digit(acc['net_capital'] + amount, digit)
+
+            # 지급될 보너스가 해당 통화 digit 기준으로 0이면 지급하지 않는다
             if apply_bonus > 0:
                 acc['bonus'] = floor_to_digit(acc['bonus'] + apply_bonus, digit)
                 st.session_state['누적보너스_USD'] = floor_to_digit(
