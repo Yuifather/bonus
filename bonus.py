@@ -3,7 +3,6 @@ import pandas as pd
 import math
 
 # 초기값 세팅
-# 환율은 XXX/USD 기준으로 임시로 작성함
 default_rates = {
     'USD': 1, 'EUR': 1.14, 'GBP': 1.25, 'JPY': 0.007,
     'BTC': 105193.5, 'ETH': 2629.69, 'XRP': 2.21, 'USDT': 1, 'USDC': 1,
@@ -22,7 +21,6 @@ default_bonus_ratio_next = 20
 default_bonus_wipe_currency = 'JPY'
 default_bonus_wipe_amount = 1000
 
-# 공통 함수
 def floor_to_digit(val, digit):
     p = 10 ** digit
     return math.floor(val * p) / p
@@ -63,7 +61,7 @@ if 'bonus_ratio_first' not in st.session_state:
 if 'bonus_ratio_next' not in st.session_state:
     st.session_state['bonus_ratio_next'] = default_bonus_ratio_next
 if '누적보너스' not in st.session_state:
-    st.session_state['누적보너스'] = 0.0  # 한 통화로만 누적(기준통화)
+    st.session_state['누적보너스'] = 0.0  # 누적보너스는 무조건 한도통화로만 누적
 if 'bonus_wipe_policy' not in st.session_state:
     st.session_state['bonus_wipe_policy'] = {
         'currency': default_bonus_wipe_currency,
@@ -123,19 +121,16 @@ if main_menu == "입금/출금":
         bonus_ratio_first = st.session_state['bonus_ratio_first']
         bonus_ratio_next = st.session_state['bonus_ratio_next']
 
-        # 각 한도통화 기준
         bonus_limit_currency = bonus_limit_info['currency']
         bonus_limit_value = float(bonus_limit_info['limit'])
         first_bonus_limit_currency = first_bonus_limit_info['currency']
         first_bonus_limit_value = float(first_bonus_limit_info['limit'])
 
-        # 누적보너스
         누적보너스 = st.session_state['누적보너스']
         remain_bonus_limit = round_amount(bonus_limit_value - 누적보너스, currencies[bonus_limit_currency]['digit'])
 
         # 입금통화 기준으로 환산
         first_limit = first_bonus_limit_value * currencies[currency]['rate'] / currencies[first_bonus_limit_currency]['rate']
-        bonus_limit_local = bonus_limit_value * currencies[currency]['rate'] / currencies[bonus_limit_currency]['rate']
 
         if action == "입금":
             amount = floor_to_digit(amount, digit)
@@ -165,9 +160,11 @@ if main_menu == "입금/출금":
 
             if apply_bonus > 0:
                 acc['bonus'] = floor_to_digit(acc['bonus'] + apply_bonus, digit)
-                # 누적보너스: 입금통화 지급 보너스 한도통화로 환산해서 누적
-                st.session_state['누적보너스'] += floor_to_digit(apply_bonus * currencies[bonus_limit_currency]['rate'] / currencies[currency]['rate'], currencies[bonus_limit_currency]['digit'])
-                st.success(f"{currency} {amount} 입금 및 보너스 {apply_bonus} 지급")
+                # 지급된 보너스를 한도통화로 환산해서 누적
+                bonus_for_limit = apply_bonus * currencies[bonus_limit_currency]['rate'] / currencies[currency]['rate']
+                bonus_for_limit = floor_to_digit(bonus_for_limit, currencies[bonus_limit_currency]['digit'])
+                st.session_state['누적보너스'] += bonus_for_limit
+                st.success(f"{currency} {amount} 입금 및 보너스 {apply_bonus} 지급 (누적: {st.session_state['누적보너스']} {bonus_limit_currency})")
             else:
                 st.success(f"{currency} {amount} 입금 (보너스 한도 도달로 보너스 지급 없음)")
 
@@ -190,7 +187,6 @@ if main_menu == "입금/출금":
                     digit0 = currencies[code]['digit']
                     acc0['bonus'] = floor_to_digit(acc0['bonus'] * (1 - ratio), digit0)
                 acc['net_capital'] = floor_to_digit(acc['net_capital'] - 출금액, digit)
-                # 전체 순수자본(소멸 기준 통화 환산) 계산
                 wipe_policy = st.session_state['bonus_wipe_policy']
                 wipe_currency = wipe_policy['currency']
                 wipe_amount = wipe_policy['amount']
@@ -199,7 +195,6 @@ if main_menu == "입금/출금":
                     acc0 = st.session_state.accounts[code]
                     d0 = currencies[code]['digit']
                     net0 = floor_to_digit(acc0['net_capital'], d0)
-                    # 환산해서 합산
                     net_in_wipe = 환산금액(net0, code, wipe_currency, currencies)
                     total_net_for_wipe += net_in_wipe
                 if total_net_for_wipe < wipe_amount:
