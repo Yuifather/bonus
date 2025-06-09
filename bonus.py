@@ -152,9 +152,8 @@ if main_menu == "입금/출금":
 
             if 누적보너스 == Decimal('0'):
                 # 첫 입금
-                fifty_amt = min(amount, first_limit)
-                excess_amt = max(Decimal('0'), amount - first_limit)
-                raw_bonus = fifty_amt * Decimal(bonus_ratio_first) / Decimal('100') + excess_amt * Decimal(bonus_ratio_next) / Decimal('100')
+                raw_bonus = amount * Decimal(bonus_ratio_first) / Decimal('100')
+                raw_bonus = min(raw_bonus, first_bonus_limit_value)
             else:
                 raw_bonus = amount * Decimal(bonus_ratio_next) / Decimal('100')
 
