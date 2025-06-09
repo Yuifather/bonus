@@ -18,6 +18,8 @@ default_first_bonus_currency = 'USD'
 default_first_bonus_limit = 500
 default_bonus_ratio_first = 50
 default_bonus_ratio_next = 20
+default_bonus_wipe_currency = 'USD'
+default_bonus_wipe_amount = 10
 
 # 공통 함수
 def floor_to_digit(val, digit):
@@ -61,6 +63,11 @@ if 'bonus_ratio_next' not in st.session_state:
     st.session_state['bonus_ratio_next'] = default_bonus_ratio_next
 if '누적보너스' not in st.session_state:
     st.session_state['누적보너스'] = 0.0  # 한 통화로만 누적(기준통화)
+if 'bonus_wipe_policy' not in st.session_state:
+    st.session_state['bonus_wipe_policy'] = {
+        'currency': default_bonus_wipe_currency,
+        'amount': default_bonus_wipe_amount
+    }
 if 'setting_menu' not in st.session_state:
     st.session_state['setting_menu'] = None
 
@@ -85,6 +92,9 @@ if main_menu == "설정":
     if st.sidebar.button("누적보너스 한도 설정", key="limit_btn"):
         st.session_state['setting_menu'] = "누적보너스 한도 설정"
         setting_menu = "누적보너스 한도 설정"
+    if st.sidebar.button("보너스 소멸 정책 설정", key="bonus_wipe_btn"):
+        st.session_state['setting_menu'] = "보너스 소멸 정책 설정"
+        setting_menu = "보너스 소멸 정책 설정"
     if st.sidebar.button("초기화", key="reset_btn"):
         st.session_state['setting_menu'] = "초기화"
         setting_menu = "초기화"
@@ -154,7 +164,7 @@ if main_menu == "입금/출금":
 
             if apply_bonus > 0:
                 acc['bonus'] = floor_to_digit(acc['bonus'] + apply_bonus, digit)
-                # 누적보너스: 지급 보너스(입금통화) → 한도통화로 환산해서 누적
+                # 누적보너스: 입금통화 지급 보너스 한도통화로 환산해서 누적
                 st.session_state['누적보너스'] += floor_to_digit(apply_bonus * currencies[bonus_limit_currency]['rate'] / currencies[currency]['rate'], currencies[bonus_limit_currency]['digit'])
                 st.success(f"{currency} {amount} 입금 및 보너스 {apply_bonus} 지급")
             else:
@@ -179,13 +189,19 @@ if main_menu == "입금/출금":
                     digit0 = currencies[code]['digit']
                     acc0['bonus'] = floor_to_digit(acc0['bonus'] * (1 - ratio), digit0)
                 acc['net_capital'] = floor_to_digit(acc['net_capital'] - 출금액, digit)
-                total_net_after = 0
+                # 전체 순수자본(소멸 기준 통화 환산) 계산
+                wipe_policy = st.session_state['bonus_wipe_policy']
+                wipe_currency = wipe_policy['currency']
+                wipe_amount = wipe_policy['amount']
+                total_net_for_wipe = 0
                 for code in currencies:
                     acc0 = st.session_state.accounts[code]
                     d0 = currencies[code]['digit']
                     net0 = floor_to_digit(acc0['net_capital'], d0)
-                    total_net_after += net0 * currencies[code]['rate']
-                if total_net_after < 10:
+                    # 환산해서 합산
+                    net_in_wipe = 환산금액(net0, code, wipe_currency, currencies)
+                    total_net_for_wipe += net_in_wipe
+                if total_net_for_wipe < wipe_amount:
                     for code in currencies:
                         st.session_state.accounts[code]['bonus'] = 0
                 st.success(f"{currency} {출금액} 출금 완료 (보너스 {ratio:.2%} 차감)")
@@ -261,6 +277,21 @@ if main_menu == "설정" and setting_menu == "누적보너스 한도 설정":
         st.session_state['누적보너스'] = 0.0
         st.success("누적보너스 한도 변경 및 전체 초기화 완료!")
 
+# 보너스 소멸 정책 설정
+if main_menu == "설정" and setting_menu == "보너스 소멸 정책 설정":
+    st.subheader("보너스 소멸 정책 설정")
+    wipe_policy = st.session_state['bonus_wipe_policy']
+    wipe_currency = st.selectbox("소멸 기준 통화", list(currencies.keys()), index=list(currencies.keys()).index(wipe_policy['currency']), key="bonus_wipe_currency")
+    wipe_amount = st.number_input(f"소멸 기준 금액 ({wipe_currency})", min_value=0.0, value=float(wipe_policy['amount']), step=1.0, key="bonus_wipe_amount")
+    if st.button("적용(전체초기화)", key="apply_bonus_wipe"):
+        st.session_state['bonus_wipe_policy'] = {'currency': wipe_currency, 'amount': wipe_amount}
+        st.session_state.accounts = {
+            code: {'net_capital': 0, 'bonus': 0, 'credit': 0, 'restricted': 0}
+            for code in currencies
+        }
+        st.session_state['누적보너스'] = 0.0
+        st.success("보너스 소멸 정책 변경 및 전체 초기화 완료!")
+
 # 초기화
 if main_menu == "설정" and setting_menu == "초기화":
     st.subheader("전체 초기화")
@@ -329,6 +360,7 @@ first_bonus_limit_info = st.session_state['first_bonus_limit']
 bonus_limit_currency = bonus_limit_info['currency']
 bonus_limit_value = float(bonus_limit_info['limit'])
 누적보너스 = st.session_state['누적보너스']
+wipe_policy = st.session_state['bonus_wipe_policy']
 
 st.write(f"**총자산 (Total balance):** {total_balance:.{main_digit}f} {합산기준통화}  =  순수자본 + 보너스 + 크레딧 + 출금제한")
 st.write(f"** - 순수자본:** {net_asset:.{main_digit}f} {합산기준통화}")
@@ -338,7 +370,7 @@ st.write(f"** - 토탈출금제한:** {total_restricted:.{main_digit}f} {합산�
 
 st.write(f"**누적보너스 ({bonus_limit_currency} 기준, 지급총액):** {누적보너스:.{currencies[bonus_limit_currency]['digit']}f} / {bonus_limit_value} {bonus_limit_currency}")
 
-st.info(f"""
+st.info(f'''
 - 신규 고객의 최초 입금에 한해, 입금 금액의 {st.session_state['bonus_ratio_first']}%를 보너스로 지급. 단, 최초 입금에 대한 보너스는 최대 {st.session_state['first_bonus_limit']['limit']} {st.session_state['first_bonus_limit']['currency']}를 한도로 함.
 - 최초 입금 시 한도를 넘는 입금 차액 또는 추가 입금에 대해서는 입금 금액의 {st.session_state['bonus_ratio_next']}%를 보너스로 지급
 - balance = 순수자본 + 보너스 + credit + restricted
@@ -348,6 +380,6 @@ st.info(f"""
 - 누적보너스 한도는 [설정 > 누적보너스 한도 설정]에서 변경 가능합니다.
 - 환산 통화를 바꿔서 각 금액을 원하는 통화로 확인할 수 있습니다.
 - 출금 시 보너스를 제외한 계좌 잔액 대비 출금 금액에 해당하는 비율만큼, 보너스 잔액도 비례하여 차감
-- 출금 후 전체 순수자본(USD 환산)이 10 미만이면 모든 보너스가 전액 소멸됩니다.
+- **출금 후 전체 순수자본({wipe_policy['currency']}) 환산 기준 {wipe_policy['amount']} 미만이면 모든 보너스가 전액 소멸됩니다.**
 - 보너스 정책/비율 (최초입금 최대 {st.session_state['first_bonus_limit']['limit']} {st.session_state['first_bonus_limit']['currency']}, 첫입금 {st.session_state['bonus_ratio_first']}%, 추가입금 {st.session_state['bonus_ratio_next']}%)은 [설정 > 보너스 정책/비율 수정]에서 변경 가능합니다.
-""")
+''')
