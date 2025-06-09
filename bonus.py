@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
-from decimal import Decimal, ROUND_DOWN, getcontext
+from decimal import Decimal, ROUND_DOWN, ROUND_UP, getcontext
 
-getcontext().prec = 16  
+getcontext().prec = 28
 
 # 초기값 세팅
 default_rates = {
@@ -248,6 +248,75 @@ if main_menu == "설정" and setting_menu == "환율 및 소수점 수정":
         }
         st.session_state['누적보너스'] = Decimal('0')
         st.success("환율/소수점 변경 및 전체 초기화 완료!")
+
+# 보너스 정책/비율 수정
+if main_menu == "설정" and setting_menu == "보너스 정책/비율 수정":
+    st.subheader("보너스 정책/비율 수정")
+    st.write("아래 설정을 변경 후 '적용'을 누르면 전체 초기화 됩니다.")
+    col1, col2 = st.columns(2)
+    first_bonus_limit_currency = col1.selectbox("최초입금 한도 통화", list(currencies.keys()), index=list(currencies.keys()).index(st.session_state['first_bonus_limit']['currency']), key="first_bonus_limit_currency")
+    first_bonus_limit = col1.number_input(
+        f"최초입금 보너스 최대({first_bonus_limit_currency})", min_value=0.0, value=float(st.session_state['first_bonus_limit']['limit']), step=1.0, key="first_bonus_limit_input"
+    )
+    bonus_ratio_first = col2.number_input("첫입금 보너스(%)", min_value=0, max_value=100, value=int(st.session_state['bonus_ratio_first']), step=1, key="bonus_ratio_first_set")
+    col3, col4 = st.columns(2)
+    bonus_ratio_next = col3.number_input("추가입금 보너스(%)", min_value=0, max_value=100, value=int(st.session_state['bonus_ratio_next']), step=1, key="bonus_ratio_next_set")
+    if st.button("적용(전체초기화)", key="apply_bonus_ratio"):
+        st.session_state['first_bonus_limit'] = {"limit": Decimal(str(first_bonus_limit)), "currency": first_bonus_limit_currency}
+        st.session_state['bonus_ratio_first'] = int(bonus_ratio_first)
+        st.session_state['bonus_ratio_next'] = int(bonus_ratio_next)
+        st.session_state.accounts = {
+            code: {'net_capital': Decimal('0'), 'bonus': Decimal('0'), 'credit': Decimal('0'), 'restricted': Decimal('0')}
+            for code in currencies
+        }
+        st.session_state['누적보너스'] = Decimal('0')
+        st.success("보너스 정책/비율 변경 및 전체 초기화 완료!")
+
+# 누적보너스 한도 설정
+if main_menu == "설정" and setting_menu == "누적보너스 한도 설정":
+    st.subheader("누적보너스 한도 설정")
+    bonus_limit_currency = st.selectbox("누적보너스 한도 통화", list(currencies.keys()), index=list(currencies.keys()).index(st.session_state['bonus_limit']['currency']), key="bonus_limit_currency")
+    bonus_limit_value = st.number_input(
+        f"누적보너스 한도 ({bonus_limit_currency})", min_value=1.0, value=float(st.session_state['bonus_limit']['limit']), step=1.0, key="bonus_limit_value"
+    )
+    if st.button("적용(전체초기화)", key="apply_bonus_limit"):
+        st.session_state['bonus_limit'] = {"limit": Decimal(str(bonus_limit_value)), "currency": bonus_limit_currency}
+        st.session_state.accounts = {
+            code: {'net_capital': Decimal('0'), 'bonus': Decimal('0'), 'credit': Decimal('0'), 'restricted': Decimal('0')}
+            for code in currencies
+        }
+        st.session_state['누적보너스'] = Decimal('0')
+        st.success("누적보너스 한도 변경 및 전체 초기화 완료!")
+
+# 보너스 소멸 정책 설정
+if main_menu == "설정" and setting_menu == "보너스 소멸 정책 설정":
+    st.subheader("보너스 소멸 정책 설정")
+    wipe_policy = st.session_state['bonus_wipe_policy']
+    wipe_currency = st.selectbox("소멸 기준 통화", list(currencies.keys()), index=list(currencies.keys()).index(wipe_policy['currency']), key="bonus_wipe_currency")
+    wipe_amount = st.number_input(f"소멸 기준 금액 ({wipe_currency})", min_value=0.0, value=float(wipe_policy['amount']), step=1.0, key="bonus_wipe_amount")
+    if st.button("적용(전체초기화)", key="apply_bonus_wipe"):
+        st.session_state['bonus_wipe_policy'] = {'currency': wipe_currency, 'amount': Decimal(str(wipe_amount))}
+        st.session_state.accounts = {
+            code: {'net_capital': Decimal('0'), 'bonus': Decimal('0'), 'credit': Decimal('0'), 'restricted': Decimal('0')}
+            for code in currencies
+        }
+        st.session_state['누적보너스'] = Decimal('0')
+        st.success("보너스 소멸 정책 변경 및 전체 초기화 완료!")
+
+# 초기화
+if main_menu == "설정" and setting_menu == "초기화":
+    st.subheader("전체 초기화")
+    if st.button("전체 계좌/보너스 리셋", key="full_reset"):
+        st.session_state.accounts = {
+            code: {'net_capital': Decimal('0'), 'bonus': Decimal('0'), 'credit': Decimal('0'), 'restricted': Decimal('0')}
+            for code in currencies
+        }
+        st.session_state['누적보너스'] = Decimal('0')
+        st.success("모든 계좌 정보가 초기화 되었습니다.")
+
+if main_menu == "설정" and setting_menu == "뒤로가기":
+    st.session_state['setting_menu'] = None
+    st.sidebar.info("좌측 메뉴에서 '입금/출금'을 다시 선택하세요.")
 
 # 계좌 현황 및 합산정보
 accounts = st.session_state.accounts
