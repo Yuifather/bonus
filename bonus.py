@@ -3,6 +3,7 @@ import pandas as pd
 import math
 
 # 초기값 세팅
+# 환율은 XXX/USD 기준으로 임시로 작성함
 default_rates = {
     'USD': 1, 'EUR': 1.14, 'GBP': 1.25, 'JPY': 0.007,
     'BTC': 105193.5, 'ETH': 2629.69, 'XRP': 2.21, 'USDT': 1, 'USDC': 1,
@@ -12,14 +13,14 @@ default_digits = {
     'BTC': 8, 'ETH': 6, 'XRP': 4, 'USDT': 2, 'USDC': 2,
 }
 
-default_bonus_currency = 'USD'
-default_bonus_limit = 20000
-default_first_bonus_currency = 'USD'
-default_first_bonus_limit = 500
+default_bonus_currency = 'JPY'
+default_bonus_limit = 2000000
+default_first_bonus_currency = 'JPY'
+default_first_bonus_limit = 50000
 default_bonus_ratio_first = 50
 default_bonus_ratio_next = 20
-default_bonus_wipe_currency = 'USD'
-default_bonus_wipe_amount = 10
+default_bonus_wipe_currency = 'JPY'
+default_bonus_wipe_amount = 1000
 
 # 공통 함수
 def floor_to_digit(val, digit):
