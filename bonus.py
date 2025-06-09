@@ -25,6 +25,10 @@ def floor_to_digit(val, digit):
     p = 10 ** digit
     return math.floor(val * p) / p
 
+def ceil_to_digit(val, digit):   # 올림 함수 추가
+    p = 10 ** digit
+    return math.ceil(val * p) / p
+
 def 환산금액(val, from_code, to_code, currencies):
     usd_val = val * currencies[from_code]['rate']
     return usd_val / currencies[to_code]['rate']
@@ -144,7 +148,7 @@ if main_menu == "입금/출금":
                 raw_bonus = amount * (bonus_ratio_next / 100)
 
             # 한도통화로 환산
-            raw_bonus_in_limit_currency = raw_bonus * currencies[bonus_limit_currency]['rate'] / currencies[currency]['rate']
+            raw_bonus_in_limit_currency = raw_bonus * (currencies[currency]['rate'] / currencies[bonus_limit_currency]['rate'])  # ← 누적보너스 환산 공식 수정
 
             if remain_bonus_limit <= 0:
                 apply_bonus_in_limit_currency = 0
@@ -154,15 +158,15 @@ if main_menu == "입금/출금":
                 apply_bonus_in_limit_currency = raw_bonus_in_limit_currency
 
             # 입금통화로 환산 및 소수점 처리
-            apply_bonus = floor_to_digit(apply_bonus_in_limit_currency * currencies[currency]['rate'] / currencies[bonus_limit_currency]['rate'], digit)
+            apply_bonus = floor_to_digit(apply_bonus_in_limit_currency * (currencies[bonus_limit_currency]['rate'] / currencies[currency]['rate']), digit)
 
             acc['net_capital'] = floor_to_digit(acc['net_capital'] + amount, digit)
 
             if apply_bonus > 0:
                 acc['bonus'] = floor_to_digit(acc['bonus'] + apply_bonus, digit)
                 # 지급된 보너스를 한도통화로 환산해서 누적
-                bonus_for_limit = apply_bonus * currencies[bonus_limit_currency]['rate'] / currencies[currency]['rate']
-                bonus_for_limit = floor_to_digit(bonus_for_limit, currencies[bonus_limit_currency]['digit'])
+                bonus_for_limit = apply_bonus * (currencies[currency]['rate'] / currencies[bonus_limit_currency]['rate'])  # ← 누적보너스 환산 공식 수정
+                bonus_for_limit = ceil_to_digit(bonus_for_limit, currencies[bonus_limit_currency]['digit'])              # ← 올림처리
                 st.session_state['누적보너스'] += bonus_for_limit
                 st.success(f"{currency} {amount} 입금 및 보너스 {apply_bonus} 지급 (누적: {st.session_state['누적보너스']} {bonus_limit_currency})")
             else:
@@ -201,6 +205,7 @@ if main_menu == "입금/출금":
                     for code in currencies:
                         st.session_state.accounts[code]['bonus'] = 0
                 st.success(f"{currency} {출금액} 출금 완료 (보너스 {ratio:.2%} 차감)")
+
 
 # 환율 및 소수점 수정
 if main_menu == "설정" and setting_menu == "환율 및 소수점 수정":
