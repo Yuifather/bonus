@@ -19,7 +19,6 @@ default_digits = {
     'USD': 2, 'EUR': 2, 'GBP': 2, 'JPY': 0,
     'BTC': 8, 'ETH': 6, 'XRP': 4, 'USDT': 2, 'USDC': 2,
 }
-
 CURRENCY_LIST = ['USD', 'EUR', 'GBP', 'JPY', 'BTC', 'ETH', 'XRP', 'USDT', 'USDC']
 
 default_bonus_currency = 'JPY'
@@ -39,10 +38,7 @@ def floor_to_digit(val, digit):
         quant = Decimal('1')
     return dval.quantize(quant, rounding=ROUND_DOWN)
 
-# 크로스레이트 계산 함수
 def get_cross_rate(base, quote, direction, rates):
-    """base/quote 쌍, direction(bid/ask), 환율 딕셔너리"""
-    # 동일통화면 1
     if base == quote:
         return Decimal('1')
     pair = base + quote
@@ -51,16 +47,14 @@ def get_cross_rate(base, quote, direction, rates):
         return Decimal(str(rates[pair][direction]))
     elif rev_pair in rates:
         return Decimal('1') / Decimal(str(rates[rev_pair][direction]))
-    # USD 크로스 (ex: EUR/JPY = EUR/USD * USD/JPY)
+    # USD 크로스
     if base != 'USD' and quote != 'USD':
         base_usd = get_cross_rate(base, 'USD', direction, rates)
         usd_quote = get_cross_rate('USD', quote, direction, rates)
         return base_usd * usd_quote
     raise Exception(f"No rate for {base}/{quote} ({direction})")
 
-# 환산 함수
 def 환산금액(val, from_code, to_code, rates):
-    # 환율: from_code → to_code (bid 사용)
     return val * get_cross_rate(from_code, to_code, 'bid', rates)
 
 # 세션상태 초기화
@@ -148,30 +142,28 @@ if main_menu == "입금/출금":
         누적보너스 = st.session_state['누적보너스']
         remain_bonus_limit = bonus_limit_value - 누적보너스
 
-        # 첫입금 보너스 한도: 입금통화로 환산
+        # 1. 첫입금 한도(입금통화 기준) 계산
         first_limit_in_deposit_currency = floor_to_digit(
-            환산금액(first_bonus_limit_value, first_bonus_limit_currency, currency, rates),
-            digit
+            환산금액(first_bonus_limit_value, first_bonus_limit_currency, currency, rates), digit
         )
 
         bonus = Decimal('0')
         bonus_first = Decimal('0')
         bonus_next = Decimal('0')
-
         if amount <= Decimal('0'):
             st.error("입금액이 없습니다.")
         else:
-            # 1. 첫입금 한도 이하 부분에 대해 첫입금 비율 적용
+            # 1. 첫입금 한도까지 1구간 비율
             first_part = min(amount, first_limit_in_deposit_currency)
             if first_part > 0:
                 bonus_first = floor_to_digit(first_part * Decimal(bonus_ratio_first) / Decimal(100), digit)
-            # 2. 초과분에 대해 추가입금 비율 적용
+            # 2. 한도 초과분은 2구간 비율
             second_part = max(amount - first_limit_in_deposit_currency, Decimal('0'))
             if second_part > 0:
                 bonus_next = floor_to_digit(second_part * Decimal(bonus_ratio_next) / Decimal(100), digit)
             bonus = bonus_first + bonus_next
 
-            # 누적보너스 한도 적용 (모든 보너스 환산해서 체크)
+            # 누적보너스 한도 적용 (보너스 전체를 한도통화로 환산해서 체크)
             bonus_in_limit_currency = 환산금액(bonus, currency, bonus_limit_currency, rates)
             if remain_bonus_limit <= Decimal('0'):
                 apply_bonus_in_limit_currency = Decimal('0')
