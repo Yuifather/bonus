@@ -4,7 +4,7 @@ from decimal import Decimal, ROUND_DOWN, getcontext
 
 getcontext().prec = 28
 
-# === 초기값 세팅 ===
+# 초기값 세팅
 default_rates = {
     'USD': '1', 'EUR': '1.14', 'GBP': '1.25', 'JPY': '0.007',
     'BTC': '105193.5', 'ETH': '2629.69', 'XRP': '2.21', 'USDT': '1', 'USDC': '1',
@@ -22,10 +22,9 @@ default_bonus_ratio_next = 20
 default_bonus_wipe_currency = 'JPY'
 default_bonus_wipe_amount = Decimal('1000')
 
-# === 크로스환율 함수 ===
+# 크로스환율 함수
 def get_cross_rate(base, quote, direction, rates):
     """기준통화/상대통화(bid/ask) 크로스환율 계산 (Decimal 기반)"""
-    # rates: 예) {'USDJPY': {'bid': 110.0, 'ask': 110.2}, ...}
     if base == quote:
         return Decimal('1')
     pair = base + quote
@@ -36,13 +35,13 @@ def get_cross_rate(base, quote, direction, rates):
         # 역수
         return Decimal('1') / Decimal(str(rates[inv_pair][direction]))
     else:
-        # USD를 통한 크로스 (USD만 중간환율 허용)
+        # USD를 통한 크로스환율
         if base != 'USD' and quote != 'USD':
             return (get_cross_rate(base, 'USD', direction, rates) /
                     get_cross_rate(quote, 'USD', direction, rates))
         raise ValueError(f"No cross rate for {base}/{quote}")
 
-# === 디지털 소수점 내림 함수 ===
+# 디지털 소수점 내림 함수
 def floor_to_digit(val, digit):
     dval = Decimal(val)
     if digit > 0:
@@ -51,7 +50,7 @@ def floor_to_digit(val, digit):
         quant = Decimal('1')
     return dval.quantize(quant, rounding=ROUND_DOWN)
 
-# === 세션상태 초기화 ===
+# 세션상태 초기화
 if 'currencies' not in st.session_state:
     st.session_state['currencies'] = {
         code: {'rate': Decimal(str(default_rates[code])), 'digit': int(default_digits[code])}
@@ -90,7 +89,7 @@ if 'setting_menu' not in st.session_state:
 
 currencies = st.session_state['currencies']
 
-# === Streamlit 사이드 메뉴 ===
+# Streamlit 사이드 메뉴
 main_menu = st.sidebar.radio(
     "메뉴",
     ["입금/출금", "설정"],
@@ -119,9 +118,8 @@ if main_menu == "설정":
         st.session_state['setting_menu'] = None
         setting_menu = None
 
-# === 환율 딕셔너리(크로스 함수용) ===
+# 환율 딕셔너리(크로스 함수용)
 def get_rates_dict():
-    # XXXUSD형 bid/ask 일치 가정
     rates = {}
     for c in currencies:
         if c == 'USD':
@@ -132,7 +130,7 @@ def get_rates_dict():
     rates['USDUSD'] = {'bid': Decimal('1'), 'ask': Decimal('1')}
     return rates
 
-# === 보너스 계산 ===
+# 보너스 계산
 def calc_bonus(
     amount, deposit_currency,
     bonus_limit_currency, bonus_limit_value,
@@ -142,38 +140,36 @@ def calc_bonus(
     rates, currencies,
 ):
     # 금액: 입금통화 기준
-    # 크로스환율: 입금통화→한도통화
+    # 입금통화/한도통화
     amount_in_limit_cur = amount * get_cross_rate(deposit_currency, bonus_limit_currency, 'bid', rates)
     remain_bonus_limit = bonus_limit_value - 누적보너스
     if remain_bonus_limit <= 0:
         return Decimal('0')
 
-    # 1) 첫입금(누적입금액==0)만 구간적용
+    # 첫입금 구간적용
     if 누적입금액 == Decimal('0'):
-        # 입금액 일부가 first_bonus_limit_value(한도통화)까지 50%, 나머지 20%
-        # (50%구간)
         max_first_bonus = first_bonus_limit_value
         max_first_deposit = max_first_bonus * Decimal('100') / Decimal(bonus_ratio_first)
-        # 50% 적용 구간
+        
         first_section_deposit = min(amount_in_limit_cur, max_first_deposit)
         bonus_first_section = first_section_deposit * Decimal(bonus_ratio_first) / Decimal('100')
-        # 20% 적용 구간
+        
         next_section_deposit = max(Decimal('0'), amount_in_limit_cur - max_first_deposit)
         bonus_next_section = next_section_deposit * Decimal(bonus_ratio_next) / Decimal('100')
         total_bonus_in_limit_cur = bonus_first_section + bonus_next_section
     else:
-        # 2) 두번째/추가입금: 전액 20%
+        # 추가입금: 전액 
         total_bonus_in_limit_cur = amount_in_limit_cur * Decimal(bonus_ratio_next) / Decimal('100')
 
-    # 3) 누적보너스 한도 체크
+    # 누적보너스 한도 체크
     apply_bonus_in_limit_cur = min(remain_bonus_limit, total_bonus_in_limit_cur)
-    # 4) 입금통화로 환산
+    # 입금통화로 환산
     bonus_in_deposit_cur = apply_bonus_in_limit_cur * get_cross_rate(bonus_limit_currency, deposit_currency, 'bid', rates)
-    # 5) 디지털 소수점
+    # 소수점
     digit = currencies[deposit_currency]['digit']
     return floor_to_digit(bonus_in_deposit_cur, digit)
 
-# === 입금/출금 처리 ===
+# 입금/출금 처리
 if main_menu == "입금/출금":
     st.sidebar.header("입금/출금")
     st.session_state['setting_menu'] = None
@@ -261,7 +257,7 @@ if main_menu == "입금/출금":
                         st.session_state['accounts'][code]['bonus'] = Decimal('0')
                 st.success(f"{currency} {float(출금액):,.{digit}f} 출금 완료 (보너스 {float(ratio * 100):.2f}% 차감)")
 
-# === 설정 메뉴 구현 ===
+# 설정 메뉴
 if main_menu == "설정" and setting_menu == "환율 및 소수점 수정":
     st.subheader("환율 및 소수점 수정")
     st.write("'적용' 클릭시 전체 초기화 됩니다.")
@@ -363,7 +359,7 @@ if main_menu == "설정" and setting_menu == "뒤로가기":
     st.session_state['setting_menu'] = None
     st.sidebar.info("좌측 메뉴에서 '입금/출금'을 다시 선택하세요.")
 
-# === 계좌 현황 및 합산정보 ===
+# 계좌 현황 및 합산정보
 accounts = st.session_state['accounts']
 st.write("### 통화별 계좌 현황")
 rows = []
