@@ -4,6 +4,7 @@ from decimal import Decimal, ROUND_DOWN, getcontext
 
 getcontext().prec = 28
 
+# 환율, 소수점 설정
 default_rates = {
     'USDUSD': {'bid': '1', 'ask': '1'},
     'EURUSD': {'bid': '1.14', 'ask': '1.14'},
@@ -19,8 +20,9 @@ default_digits = {
     'USD': 2, 'EUR': 2, 'GBP': 2, 'JPY': 0,
     'BTC': 8, 'ETH': 6, 'XRP': 4, 'USDT': 2, 'USDC': 2,
 }
-CURRENCY_LIST = ['USD', 'EUR', 'GBP', 'JPY', 'BTC', 'ETH', 'XRP', 'USDT', 'USDC']
+CURRENCY_LIST = list(default_digits.keys())
 
+# 기본 정책
 default_bonus_currency = 'JPY'
 default_bonus_limit = Decimal('2000000')
 default_first_bonus_currency = 'JPY'
@@ -57,7 +59,7 @@ def get_cross_rate(base, quote, direction, rates):
 def 환산금액(val, from_code, to_code, rates):
     return val * get_cross_rate(from_code, to_code, 'bid', rates)
 
-# 세션상태 초기화
+# 세션상태
 if 'rates' not in st.session_state:
     st.session_state['rates'] = default_rates.copy()
 if 'digits' not in st.session_state:
@@ -94,7 +96,6 @@ if 'setting_menu' not in st.session_state:
 rates = st.session_state['rates']
 digits = st.session_state['digits']
 
-# 메뉴
 main_menu = st.sidebar.radio("메뉴", ["입금/출금", "설정"], key="main_menu")
 setting_menu = st.session_state['setting_menu'] if main_menu == "설정" else None
 
@@ -119,6 +120,100 @@ if main_menu == "설정":
         st.session_state['setting_menu'] = None
         setting_menu = None
 
+# 환율 및 소수점 수정
+if main_menu == "설정" and setting_menu == "환율 및 소수점 수정":
+    st.subheader("환율 및 소수점 수정")
+    st.write("'적용' 클릭시 전체 초기화 됩니다.")
+    new_rates = {}
+    new_digits = {}
+    cols = st.columns([1,2,1])
+    cols[0].write("**통화**")
+    cols[1].write("**USD환율**")
+    cols[2].write("**소수점**")
+    for code in CURRENCY_LIST:
+        col1, col2, col3 = st.columns([1,2,1])
+        col1.write(code)
+        pair = code + "USD"
+        cur_bid = float(rates[pair]['bid'])
+        rate = col2.number_input("", min_value=0.000001, step=0.000001, value=cur_bid, key=f"rate_set_{code}", format="%.6f")
+        digit = col3.number_input("", min_value=0, max_value=8, step=1, value=digits[code], key=f"digit_set_{code}")
+        new_rates[pair] = {'bid': str(rate), 'ask': str(rate)}
+        new_digits[code] = digit
+    if st.button("적용(전체초기화)", key="apply_rate_digit"):
+        st.session_state['rates'] = new_rates
+        st.session_state['digits'] = new_digits
+        st.session_state['accounts'] = {
+            code: {'net_capital': Decimal('0'), 'bonus': Decimal('0'), 'credit': Decimal('0'), 'restricted': Decimal('0')}
+            for code in CURRENCY_LIST
+        }
+        st.session_state['누적보너스'] = Decimal('0')
+        st.success("환율/소수점 변경 및 전체 초기화 완료!")
+
+# 보너스 정책/비율 수정
+if main_menu == "설정" and setting_menu == "보너스 정책/비율 수정":
+    st.subheader("보너스 정책/비율 수정")
+    st.write("아래 설정을 변경 후 '적용'을 누르면 전체 초기화 됩니다.")
+    col1, col2 = st.columns(2)
+    first_bonus_limit_currency = col1.selectbox("최초입금 한도 통화", CURRENCY_LIST, index=CURRENCY_LIST.index(st.session_state['first_bonus_limit']['currency']), key="first_bonus_limit_currency")
+    first_bonus_limit = col1.number_input(f"최초입금 보너스 최대({first_bonus_limit_currency})", min_value=0.0, value=float(st.session_state['first_bonus_limit']['limit']), step=1.0, key="first_bonus_limit_input")
+    bonus_ratio_first = col2.number_input("첫입금 보너스(%)", min_value=0, max_value=100, value=int(st.session_state['bonus_ratio_first']), step=1, key="bonus_ratio_first_set")
+    col3, col4 = st.columns(2)
+    bonus_ratio_next = col3.number_input("추가입금 보너스(%)", min_value=0, max_value=100, value=int(st.session_state['bonus_ratio_next']), step=1, key="bonus_ratio_next_set")
+    if st.button("적용(전체초기화)", key="apply_bonus_ratio"):
+        st.session_state['first_bonus_limit'] = {"limit": Decimal(str(first_bonus_limit)), "currency": first_bonus_limit_currency}
+        st.session_state['bonus_ratio_first'] = int(bonus_ratio_first)
+        st.session_state['bonus_ratio_next'] = int(bonus_ratio_next)
+        st.session_state['accounts'] = {
+            code: {'net_capital': Decimal('0'), 'bonus': Decimal('0'), 'credit': Decimal('0'), 'restricted': Decimal('0')}
+            for code in CURRENCY_LIST
+        }
+        st.session_state['누적보너스'] = Decimal('0')
+        st.success("보너스 정책/비율 변경 및 전체 초기화 완료!")
+
+# 누적보너스 한도 설정
+if main_menu == "설정" and setting_menu == "누적보너스 한도 설정":
+    st.subheader("누적보너스 한도 설정")
+    bonus_limit_currency = st.selectbox("누적보너스 한도 통화", CURRENCY_LIST, index=CURRENCY_LIST.index(st.session_state['bonus_limit']['currency']), key="bonus_limit_currency")
+    bonus_limit_value = st.number_input(f"누적보너스 한도 ({bonus_limit_currency})", min_value=1.0, value=float(st.session_state['bonus_limit']['limit']), step=1.0, key="bonus_limit_value")
+    if st.button("적용(전체초기화)", key="apply_bonus_limit"):
+        st.session_state['bonus_limit'] = {"limit": Decimal(str(bonus_limit_value)), "currency": bonus_limit_currency}
+        st.session_state['accounts'] = {
+            code: {'net_capital': Decimal('0'), 'bonus': Decimal('0'), 'credit': Decimal('0'), 'restricted': Decimal('0')}
+            for code in CURRENCY_LIST
+        }
+        st.session_state['누적보너스'] = Decimal('0')
+        st.success("누적보너스 한도 변경 및 전체 초기화 완료!")
+
+# 보너스 소멸 정책 설정
+if main_menu == "설정" and setting_menu == "보너스 소멸 정책 설정":
+    st.subheader("보너스 소멸 정책 설정")
+    wipe_policy = st.session_state['bonus_wipe_policy']
+    wipe_currency = st.selectbox("소멸 기준 통화", CURRENCY_LIST, index=CURRENCY_LIST.index(wipe_policy['currency']), key="bonus_wipe_currency")
+    wipe_amount = st.number_input(f"소멸 기준 금액 ({wipe_currency})", min_value=0.0, value=float(wipe_policy['amount']), step=1.0, key="bonus_wipe_amount")
+    if st.button("적용(전체초기화)", key="apply_bonus_wipe"):
+        st.session_state['bonus_wipe_policy'] = {'currency': wipe_currency, 'amount': Decimal(str(wipe_amount))}
+        st.session_state['accounts'] = {
+            code: {'net_capital': Decimal('0'), 'bonus': Decimal('0'), 'credit': Decimal('0'), 'restricted': Decimal('0')}
+            for code in CURRENCY_LIST
+        }
+        st.session_state['누적보너스'] = Decimal('0')
+        st.success("보너스 소멸 정책 변경 및 전체 초기화 완료!")
+
+# 초기화
+if main_menu == "설정" and setting_menu == "초기화":
+    st.subheader("전체 초기화")
+    if st.button("전체 계좌/보너스 리셋", key="full_reset"):
+        st.session_state['accounts'] = {
+            code: {'net_capital': Decimal('0'), 'bonus': Decimal('0'), 'credit': Decimal('0'), 'restricted': Decimal('0')}
+            for code in CURRENCY_LIST
+        }
+        st.session_state['누적보너스'] = Decimal('0')
+        st.success("모든 계좌 정보가 초기화 되었습니다.")
+
+if main_menu == "설정" and setting_menu == "뒤로가기":
+    st.session_state['setting_menu'] = None
+    st.sidebar.info("좌측 메뉴에서 '입금/출금'을 다시 선택하세요.")
+
 # 입금/출금
 if main_menu == "입금/출금":
     st.sidebar.header("입금/출금")
@@ -142,28 +237,28 @@ if main_menu == "입금/출금":
         누적보너스 = st.session_state['누적보너스']
         remain_bonus_limit = bonus_limit_value - 누적보너스
 
-        # 1. 첫입금 한도(입금통화 기준) 계산
+        # 첫입금 한도(입금통화 기준) 계산
         first_limit_in_deposit_currency = floor_to_digit(
             환산금액(first_bonus_limit_value, first_bonus_limit_currency, currency, rates), digit
         )
 
-        bonus = Decimal('0')
         bonus_first = Decimal('0')
         bonus_next = Decimal('0')
+        bonus = Decimal('0')
         if amount <= Decimal('0'):
             st.error("입금액이 없습니다.")
         else:
-            # 1. 첫입금 한도까지 1구간 비율
+            # 1구간: 한도까지
             first_part = min(amount, first_limit_in_deposit_currency)
             if first_part > 0:
                 bonus_first = floor_to_digit(first_part * Decimal(bonus_ratio_first) / Decimal(100), digit)
-            # 2. 한도 초과분은 2구간 비율
+            # 2구간: 한도 초과분
             second_part = max(amount - first_limit_in_deposit_currency, Decimal('0'))
             if second_part > 0:
                 bonus_next = floor_to_digit(second_part * Decimal(bonus_ratio_next) / Decimal(100), digit)
             bonus = bonus_first + bonus_next
 
-            # 누적보너스 한도 적용 (보너스 전체를 한도통화로 환산해서 체크)
+            # 누적보너스 한도 적용 (한도통화로 환산해서 체크)
             bonus_in_limit_currency = 환산금액(bonus, currency, bonus_limit_currency, rates)
             if remain_bonus_limit <= Decimal('0'):
                 apply_bonus_in_limit_currency = Decimal('0')
@@ -181,7 +276,6 @@ if main_menu == "입금/출금":
             acc['net_capital'] = floor_to_digit(acc['net_capital'] + amount, digit)
             if apply_bonus > Decimal('0'):
                 acc['bonus'] = floor_to_digit(acc['bonus'] + apply_bonus, digit)
-                # 지급된 보너스를 누적보너스(한도통화)로 누적
                 bonus_for_limit = 환산금액(apply_bonus, currency, bonus_limit_currency, rates)
                 bonus_for_limit = floor_to_digit(bonus_for_limit, digits[bonus_limit_currency])
                 st.session_state['누적보너스'] += bonus_for_limit
