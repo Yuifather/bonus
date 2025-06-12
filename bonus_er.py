@@ -43,7 +43,7 @@ def get_cross_rate(base, quote, direction, rates):
     elif inv_pair in rates:
         return Decimal('1') / Decimal(str(rates[inv_pair][direction]))
     else:
-        USD를 통한 크로스환율
+        #USD를 통한 크로스환율
         if base != 'USD' and quote != 'USD':
             return (get_cross_rate(base, 'USD', direction, rates) /
                     get_cross_rate(quote, 'USD', direction, rates))
