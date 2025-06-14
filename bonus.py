@@ -171,6 +171,110 @@ if main_menu == "설정":
         st.session_state['setting_menu'] = None
         setting_menu = None
 
+# 설정 각 메뉴별 세부 UI
+if main_menu == "설정" and setting_menu == "환율 및 소수점 수정":
+    st.subheader("환율 및 소수점 수정")
+    st.write("'적용' 클릭시 전체 초기화 됩니다.")
+    new_rates = {}
+    new_digits = {}
+    st.write("통화쌍 / 환율(bid/ask)")
+    for pair in rates.keys():
+        col1, col2, col3 = st.columns([2, 2, 2])
+        col1.write(pair)
+        bid = col2.number_input(
+            f"{pair} bid", min_value=0.000001, step=0.000001, value=float(rates[pair]['bid']), key=f"rate_set_{pair}_bid", format="%.6f"
+        )
+        ask = col3.number_input(
+            f"{pair} ask", min_value=0.000001, step=0.000001, value=float(rates[pair]['ask']), key=f"rate_set_{pair}_ask", format="%.6f"
+        )
+        new_rates[pair] = {'bid': Decimal(str(bid)), 'ask': Decimal(str(ask))}
+    for code in currencies.keys():
+        d = st.number_input(
+            f"{code} 소수점", min_value=0, max_value=8, step=1, value=int(currencies[code]['digit']), key=f"digit_set_{code}"
+        )
+        new_digits[code] = int(d)
+    if st.button("적용(전체초기화)", key="apply_rate_digit"):
+        st.session_state['rates'] = new_rates
+        st.session_state['currencies'] = {
+            code: {'digit': new_digits[code]} for code in currency_list
+        }
+        st.session_state['accounts'] = {
+            code: {'net_capital': Decimal('0'), 'bonus': Decimal('0'), 'credit': Decimal('0'), 'restricted': Decimal('0')}
+            for code in currency_list
+        }
+        st.session_state['sum_bonus'] = Decimal('0')
+        st.session_state['sum_deposit'] = {c: Decimal('0') for c in currency_list}
+        st.success("환율/소수점 변경 및 전체 초기화 완료!")
+
+if main_menu == "설정" and setting_menu == "보너스 정책/비율 수정":
+    st.subheader("보너스 정책/비율 수정")
+    st.write("아래 설정을 변경 후 '적용'을 누르면 전체 초기화 됩니다.")
+    col1, col2 = st.columns(2)
+    first_bonus_limit_currency = col1.selectbox("최초입금 한도 통화", currency_list, index=currency_list.index(st.session_state['first_bonus_limit']['currency']), key="first_bonus_limit_currency")
+    first_bonus_limit = col1.number_input(
+        f"최초입금 보너스 최대({first_bonus_limit_currency})", min_value=0.0, value=float(st.session_state['first_bonus_limit']['limit']), step=1.0, key="first_bonus_limit_input"
+    )
+    bonus_ratio_first = col2.number_input("첫입금 보너스(%)", min_value=0, max_value=100, value=int(st.session_state['bonus_ratio_first']), step=1, key="bonus_ratio_first_set")
+    col3, col4 = st.columns(2)
+    bonus_ratio_next = col3.number_input("추가입금 보너스(%)", min_value=0, max_value=100, value=int(st.session_state['bonus_ratio_next']), step=1, key="bonus_ratio_next_set")
+    if st.button("적용(전체초기화)", key="apply_bonus_ratio"):
+        st.session_state['first_bonus_limit'] = {"limit": Decimal(str(first_bonus_limit)), "currency": first_bonus_limit_currency}
+        st.session_state['bonus_ratio_first'] = int(bonus_ratio_first)
+        st.session_state['bonus_ratio_next'] = int(bonus_ratio_next)
+        st.session_state['accounts'] = {
+            code: {'net_capital': Decimal('0'), 'bonus': Decimal('0'), 'credit': Decimal('0'), 'restricted': Decimal('0')}
+            for code in currency_list
+        }
+        st.session_state['sum_bonus'] = Decimal('0')
+        st.session_state['sum_deposit'] = {c: Decimal('0') for c in currency_list}
+        st.success("보너스 정책/비율 변경 및 전체 초기화 완료!")
+
+if main_menu == "설정" and setting_menu == "누적보너스 한도 설정":
+    st.subheader("누적보너스 한도 설정")
+    bonus_limit_currency = st.selectbox("누적보너스 한도 통화", currency_list, index=currency_list.index(st.session_state['bonus_limit']['currency']), key="bonus_limit_currency")
+    bonus_limit_value = st.number_input(
+        f"누적보너스 한도 ({bonus_limit_currency})", min_value=1.0, value=float(st.session_state['bonus_limit']['limit']), step=1.0, key="bonus_limit_value"
+    )
+    if st.button("적용(전체초기화)", key="apply_bonus_limit"):
+        st.session_state['bonus_limit'] = {"limit": Decimal(str(bonus_limit_value)), "currency": bonus_limit_currency}
+        st.session_state['accounts'] = {
+            code: {'net_capital': Decimal('0'), 'bonus': Decimal('0'), 'credit': Decimal('0'), 'restricted': Decimal('0')}
+            for code in currency_list
+        }
+        st.session_state['sum_bonus'] = Decimal('0')
+        st.session_state['sum_deposit'] = {c: Decimal('0') for c in currency_list}
+        st.success("누적보너스 한도 변경 및 전체 초기화 완료!")
+
+if main_menu == "설정" and setting_menu == "보너스 소멸 정책 설정":
+    st.subheader("보너스 소멸 정책 설정")
+    wipe_policy = st.session_state['bonus_wipe_policy']
+    wipe_currency = st.selectbox("소멸 기준 통화", currency_list, index=currency_list.index(wipe_policy['currency']), key="bonus_wipe_currency")
+    wipe_amount = st.number_input(f"소멸 기준 금액 ({wipe_currency})", min_value=0.0, value=float(wipe_policy['amount']), step=1.0, key="bonus_wipe_amount")
+    if st.button("적용(전체초기화)", key="apply_bonus_wipe"):
+        st.session_state['bonus_wipe_policy'] = {'currency': wipe_currency, 'amount': Decimal(str(wipe_amount))}
+        st.session_state['accounts'] = {
+            code: {'net_capital': Decimal('0'), 'bonus': Decimal('0'), 'credit': Decimal('0'), 'restricted': Decimal('0')}
+            for code in currency_list
+        }
+        st.session_state['sum_bonus'] = Decimal('0')
+        st.session_state['sum_deposit'] = {c: Decimal('0') for c in currency_list}
+        st.success("보너스 소멸 정책 변경 및 전체 초기화 완료!")
+
+if main_menu == "설정" and setting_menu == "초기화":
+    st.subheader("전체 초기화")
+    if st.button("전체 계좌/보너스 리셋", key="full_reset"):
+        st.session_state['accounts'] = {
+            code: {'net_capital': Decimal('0'), 'bonus': Decimal('0'), 'credit': Decimal('0'), 'restricted': Decimal('0')}
+            for code in currency_list
+        }
+        st.session_state['sum_bonus'] = Decimal('0')
+        st.session_state['sum_deposit'] = {c: Decimal('0') for c in currency_list}
+        st.success("모든 계좌 정보가 초기화 되었습니다.")
+
+if main_menu == "설정" and setting_menu == "뒤로가기":
+    st.session_state['setting_menu'] = None
+    st.sidebar.info("좌측 메뉴에서 '입금/출금'을 다시 선택하세요.")
+
 # 입금/출금 처리
 if main_menu == "입금/출금":
     st.sidebar.header("입금/출금")
